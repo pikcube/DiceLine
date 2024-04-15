@@ -14,7 +14,9 @@ Need to subtract a modifier or a die. That works too! d20-d6-2+3
 
 ## Installation
 
-Coming Soon
+To install, download the release in the sidebar. Running the exe requires the .dll to be present. Otherwise, the .dll can be passed to the .net runtime directly.
+
+.net8.0 is not bundled and must be intalled manually.
 
 ## Public API
 
@@ -22,4 +24,4 @@ If you want to reference DiceLine.dll in your app, the classes are public with d
 
 ## Install API
 
-Coming Soon
+The package is available through nuget. https://www.nuget.org/packages/DiceLine/1.0.1
