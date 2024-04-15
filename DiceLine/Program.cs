@@ -32,22 +32,56 @@ internal static class Program
     }
 }
 
+/// <summary>
+/// An object holding a generated die result.
+/// </summary>
+/// <remarks>
+/// Dice are rolled upon constructing the object. Generating multiple object instances from the same DieRoll will yield different results.
+/// </remarks>
 public class DieResult
 {
     private static readonly Random Random = new();
 
-    public List<int[]> Results { get; } = [];
+    /// <summary>
+    /// A list of arrays containing individual die rolls.
+    /// </summary>
+    public IReadOnlyCollection<IReadOnlyCollection<int>> Results { get; }
 
-    public List<int[]> Dropped { get; } = [];
+    /// <summary>
+    /// A list of arrays containing all die rolls that were ignored.
+    /// </summary>
+    public IReadOnlyCollection<IReadOnlyCollection<int>> Dropped { get; }
 
+    /// <summary>
+    /// The total result.
+    /// </summary>
     public int Total { get; }
 
-    public List<int> Modifier { get; }
+    /// <summary>
+    /// A list of static modifiers that are added to the die roll.
+    /// </summary>
+    public IReadOnlyCollection<int> Modifier { get; }
 
-    public bool IsCrit { get; set; } = true;
+    /// <summary>
+    /// True if every die is the maximum value, false otherwise.
+    /// </summary>
+    /// <remarks>
+    /// If the maximum die size is equal to 1, then this is always false.
+    /// </remarks>
+    public bool IsCrit { get; } = true;
 
-    public bool IsCritFail { get; set; } = true;
+    /// <summary>
+    /// True if every die is a 1, false otherwise.
+    /// </summary>
+    /// <remarks>
+    /// If the maximum die size is equal to 1, then this is always false.
+    /// </remarks>
+    public bool IsCritFail { get; } = true;
 
+    /// <summary>
+    /// Generates a string summary of the object.
+    /// </summary>
+    /// <returns></returns>
     public override string ToString()
     {
         return $"Result: {Total} {Details()}{Drop()}";
@@ -64,19 +98,25 @@ public class DieResult
 
         string Drop()
         {
-            int count = Dropped.Count(z => z.Length != 0);
+            int count = Dropped.Count(z => z.Count != 0);
             return count switch
             {
                 0 => string.Empty,
-                -1 or 1 => $" Dropped ({string.Join(',', Dropped.Single(z => z.Length > 0).Select(Math.Abs))})",
+                -1 or 1 => $" Dropped ({string.Join(',', Dropped.Single(z => z.Count > 0).Select(Math.Abs))})",
                 _ => $" Dropped ({string.Join(", ", Dropped.Select(z => $"[{string.Join(',', z.Select(Math.Abs))}]"))})"
             };
         }
     }
 
+    /// <summary>
+    /// Constructs a die result, rolling all dice and generating the results. Resulting properties are read-only.
+    /// </summary>
+    /// <param name="rollInstructions">A set of instructions about how to roll the dice.</param>
     public DieResult(DieRoll rollInstructions)
     {
         Modifier = [.. rollInstructions.Modifiers];
+        List<int[]> results = [];
+        List<int[]> dropped = [];
         foreach (DieRoll.DieSet set in rollInstructions.DieSets)
         {
             int numberOfDice = set.NumberOfDice;
@@ -163,8 +203,8 @@ public class DieResult
                 localDrop = [..localDrop.Select(z => -z)];
             }
 
-            Results.Add(localResults);
-            Dropped.Add(localDrop);
+            results.Add(localResults);
+            dropped.Add(localDrop);
         }
 
         if (IsCrit && IsCritFail)
@@ -173,14 +213,34 @@ public class DieResult
             IsCritFail = false;
         }
 
+        Results = [..results];
+        Dropped = [..dropped];
         Total = Results.SelectMany(z => z).Sum() + Modifier.Sum();
 
     }
 
 }
 
+/// <summary>
+/// A class containing a roll that may be performed by calling Roll.
+/// </summary>
+/// <remarks>
+/// The dice aren't rolled unless you call the roll method or construct a new die result.
+/// </remarks>
 public class DieRoll
 {
+    /// <summary>
+    /// Converts a string into a collection of die rolls.
+    /// </summary>
+    /// <param name="arg">
+    /// A single string with no white space containing instructions about how to roll a die. Each instruction is a token separated by a + or -.<br/>
+    /// A modifier token is an <c>int</c> and is added or subtracted to the running total.<br/>
+    /// A <c>DieSet</c> token is formatted as {NumberOfDice = 1}d{DieSize} to set the properties of DieSet (default values shown)<br/>
+    /// Optionally, a token may be suffixed with any of the following to modify the following from their default values<br/>
+    /// "d{DropNumber = 0}", "m{Minimum = 0}", "r{Reroll}"<br/>
+    /// If "e" is provided, the maximum die will explode and roll again.
+    /// </param>
+    /// <returns></returns>
     public static IEnumerable<DieRoll> Generate(string arg)
     {
         arg = arg.ToLower();
@@ -199,27 +259,77 @@ public class DieRoll
         }
     }
 
+    /// <summary>
+    /// Generate a <c>DieResult</c> with rolled dice.
+    /// </summary>
+    /// <returns>
+    /// Returns a new <c>DieResult</c> with freshly rolled dice.
+    /// </returns>
+    public DieResult Roll()
+    {
+        return new DieResult(this);
+    }
+
+    /// <summary>
+    /// A list of <c>DieSet</c> containing instructions about how to roll the given dice.
+    /// </summary>
     public required List<DieSet> DieSets { get; init; }= [];
+    /// <summary>
+    /// The list of static modifiers to add to the die roll
+    /// </summary>
     public required List<int> Modifiers { get; init; } = [];
 
+    /// <summary>
+    /// Instructions about how to roll a set of dice. 
+    /// </summary>
     public class DieSet
     {
-        public required int NumberOfDice { get; init; }
+        /// <summary>
+        /// The maximum value of a die. Must be greater than 0.
+        /// </summary>
         public required int DieSize { get; init; }
-        public required int DropNumber { get; init; }
-        public required bool IsExploding { get; init; }
-        public required int[] Reroll { get; init; }
-        public required int Minimum { get; init; }
+        /// <summary>
+        /// The number of dice to roll, summing the result.
+        /// </summary>
+        /// <remarks>
+        /// If this value is negative, the resulting dice will be subtracted from the total
+        /// </remarks>
+        public int NumberOfDice { get; init; } = 1;
+        /// <summary>
+        /// AFter rolling, set this many dice aside and don't add them to the total.
+        /// </summary>
+        /// <remarks>
+        /// A positive value will remove the lowest rolls. A negative value will remove the highest rolls.
+        /// </remarks>
+        public int DropNumber { get; init; } = 0;
+        /// <summary>
+        /// True if rolling the maximum result will result in an additional die being rolled, false otherwise.
+        /// </summary>
+        public bool IsExploding { get; init; } = false;
+        /// <summary>
+        /// A list of integer values to disallow as results, forcing a reroll.
+        /// </summary>
+        /// <remarks>
+        /// If this list contains no values, all rolls are kept, otherwise any rolls matching these values will be regenerated.
+        /// </remarks>
+        public int[] Reroll { get; init; } = [];
+        /// <summary>
+        /// Any die rolls below this value will be changed to this value.
+        /// </summary>
+        public int Minimum { get; init; } = 0;
     }
 
     
     // ReSharper disable once UnusedMember.Global
+    /// <summary>
+    /// Public contructor, requires initization of fields from object initializer.
+    /// </summary>
     public DieRoll()
     {
     }
 
     [SetsRequiredMembers]
-    public DieRoll(string dieString)
+    private DieRoll(string dieString)
     {
         char[] dieChars = dieString.ToCharArray();
         StringBuilder sb = new();
